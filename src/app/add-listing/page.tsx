@@ -245,7 +245,7 @@ const AddListingPage = () => {
                   value={formData.title}
                   onChange={handleChange}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-4 py-3 border text-black border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
                   placeholder="E.g., Fresh Homemade Bread"
                 />
               </div>
@@ -262,7 +262,7 @@ const AddListingPage = () => {
                   value={formData.description}
                   onChange={handleChange}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-4 py-3 border text-black border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
                   placeholder="Describe the food item, including details about preparation, storage, etc."
                 />
               </div>
@@ -312,7 +312,7 @@ const AddListingPage = () => {
                         step="0.01"
                         value={formData.price === null ? '' : formData.price}
                         onChange={handleChange}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+                        className="w-full pl-10 text-black pr-4 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
                         placeholder="0.00"
                       />
                     </div>
@@ -336,7 +336,7 @@ const AddListingPage = () => {
                       value={formData.category}
                       onChange={handleChange}
                       required
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+                      className="w-full pl-10 text-black pr-4 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
                     >
                       <option value="">Select a category</option>
                       {FOOD_CATEGORIES.map(category => (
@@ -363,7 +363,7 @@ const AddListingPage = () => {
                       value={formData.quantity}
                       onChange={handleChange}
                       required
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+                      className="w-full text-black pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
                       placeholder="E.g., 2 loaves, 500g, etc."
                     />
                   </div>
