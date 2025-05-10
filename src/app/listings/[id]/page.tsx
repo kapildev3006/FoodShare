@@ -5,10 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiClock, FiMapPin, FiPhone, FiUser, FiTag, FiBox, FiCalendar, FiChevronLeft, FiChevronRight, FiHeart, FiShare2, FiDollarSign, FiGift, FiEdit, FiArrowLeft, FiStar, FiArrowRight } from 'react-icons/fi';
+import { FiClock, FiMapPin, FiPhone, FiUser, FiTag, FiBox, FiCalendar, FiChevronLeft, FiChevronRight, FiHeart, FiShare2, FiDollarSign, FiGift, FiEdit, FiArrowLeft, FiStar, FiArrowRight, FiMail, FiShoppingCart } from 'react-icons/fi';
 import { useAuth } from '../../../context/AuthContext';
 import { db } from '../../../firebase';
-import { doc, getDoc, deleteDoc, setDoc, collection, query, where, getDocs, addDoc, limit } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, setDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import Navbar from '../../../components/Navbar';
 import FoodCard from '../../../components/FoodCard';
 import { FoodListing } from '../../../models/FoodListing';
@@ -24,8 +24,15 @@ const ListingDetailPage = () => {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [contacting, setContacting] = useState(false);
+  const [buying, setBuying] = useState(false);
   const [similarListings, setSimilarListings] = useState<FoodListing[]>([]);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
+  const [sellerInfo, setSellerInfo] = useState<{
+    name: string;
+    email: string;
+    accountType: 'individual' | 'business' | 'ngo';
+    profileImage?: string;
+  } | null>(null);
   
   // Contact seller function
   const contactSeller = async () => {
@@ -42,56 +49,44 @@ const ListingDetailPage = () => {
     try {
       setContacting(true);
       
-      // Check if a conversation already exists
-      const conversationsQuery = query(
-        collection(db, 'conversations'),
-        where('listingId', '==', listing.id),
-        where('participants', 'array-contains', user.uid)
-      );
+     
+     
       
-      const conversationsSnapshot = await getDocs(conversationsQuery);
+     
       
-      let conversationId;
-      
-      if (!conversationsSnapshot.empty) {
-        // Use existing conversation
-        conversationId = conversationsSnapshot.docs[0].id;
-      } else {
-        // Create a new conversation
-        const newConversation = {
-          listingId: listing.id,
-          participants: [user.uid, listing.userId],
-          createdAt: new Date(),
-          lastMessage: {
-            text: 'Started a conversation',
-            timestamp: new Date(),
-            senderId: user.uid
-          },
-          unreadCount: {
-            [listing.userId]: 1
-          }
-        };
-        
-        // Add conversation to Firestore
-        const conversationRef = await addDoc(collection(db, 'conversations'), newConversation);
-        conversationId = conversationRef.id;
-        
-        // Add the initial message
-        await addDoc(collection(db, 'messages'), {
-          conversationId: conversationRef.id,
-          text: `Hi, I'm interested in your listing for "${listing.title}".`,
-          senderId: user.uid,
-          timestamp: new Date(),
-          read: false
-        });
-      }
-      
-      // Navigate to the conversation
-      router.push(`/messages/${conversationId}`);
     } catch (err) {
-      console.error('Error contacting seller:', err);
-      setError('Failed to contact the seller. Please try again.');
-      setContacting(false);
+      console.error('Error proceeding to checkout:', err);
+      setError('Failed to proceed to checkout. Please try again.');
+    } finally {
+      setBuying(false);
+    }
+  };
+  
+  // Buy item function
+  const buyItem = async () => {
+    if (!isAuthenticated) {
+      router.push('/login');
+      return;
+    }
+    
+    if (!user?.uid || !listing) return;
+    
+    // Don't allow buying your own listing
+    if (user.uid === listing.userId) {
+      setError("You cannot purchase your own listing");
+      return;
+    }
+    
+    try {
+      setBuying(true);
+      
+      // Redirect to checkout page with the listing ID
+      router.push(`/checkout?listingId=${listing.id}`);
+    } catch (err) {
+      console.error('Error proceeding to checkout:', err);
+      setError('Failed to proceed to checkout. Please try again.');
+    } finally {
+      setBuying(false);
     }
   };
   
@@ -113,6 +108,20 @@ const ListingDetailPage = () => {
             expiryDate: data.expiryDate.toDate(),
             createdAt: data.createdAt.toDate()
           } as FoodListing;
+          
+          // Fetch seller information
+          const userDocRef = doc(db, 'users', data.userId);
+          const userDocSnap = await getDoc(userDocRef);
+          
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            setSellerInfo({
+              name: userData.displayName || userData.name || 'User',
+              email: userData.email || 'No email provided',
+              accountType: userData.accountType || 'individual',
+              profileImage: userData.profilePicture || ''
+            });
+          }
           
           setListing(fetchedListing);
           
@@ -714,9 +723,16 @@ const ListingDetailPage = () => {
                         <div className="bg-green-50 p-3 rounded-full mr-4 border border-green-100">
                           <FiUser className="text-green-500" size={20} />
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <div className="text-sm text-gray-500 mb-1">Name</div>
-                          <span className="font-medium">{listing.userName}</span>
+                          <div className="flex items-center">
+                            <span className="font-medium">{listing.userName}</span>
+                            {sellerInfo && (
+                              <span className={`ml-2 px-2 py-1 text-xs rounded-full ${sellerInfo.accountType === 'business' ? 'bg-blue-100 text-blue-800' : sellerInfo.accountType === 'ngo' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>
+                                {sellerInfo.accountType.charAt(0).toUpperCase() + sellerInfo.accountType.slice(1)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center text-gray-700">
@@ -727,6 +743,25 @@ const ListingDetailPage = () => {
                           <div className="text-sm text-gray-500 mb-1">Contact</div>
                           <span className="font-medium">{listing.userContact}</span>
                         </div>
+                      </div>
+                      {sellerInfo && (
+                        <div className="flex items-center text-gray-700">
+                          <div className="bg-green-50 p-3 rounded-full mr-4 border border-green-100">
+                            <FiMail className="text-green-500" size={20} />
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500 mb-1">Email</div>
+                            <span className="font-medium">{sellerInfo.email}</span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="pt-2 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                        <Link href={`/seller-profile/${listing.userId}`} className="w-full">
+                          <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center">
+                            <FiUser className="mr-2" />
+                            View Profile
+                          </button>
+                        </Link>
                       </div>
                     </div>
                   </motion.div>
@@ -892,29 +927,51 @@ const ListingDetailPage = () => {
                 </motion.div>
               </Link>
             ) : (
-              <motion.button
-                onClick={contactSeller}
-                disabled={contacting}
-                whileHover={contacting ? {} : { y: -3 }}
-                whileTap={contacting ? {} : { scale: 0.98 }}
-                className={`w-full ${listing.isDonation ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700' : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'} text-white py-4 px-8 rounded-xl font-medium transition-all flex items-center justify-center shadow-lg hover:shadow-xl ${contacting ? 'opacity-70 cursor-not-allowed' : ''}`}
-              >
-                {contacting ? (
-                  <>
-                    <div className="mr-3 h-5 w-5 rounded-full border-2 border-t-transparent border-white animate-spin"></div>
-                    Connecting...
-                  </>
-                ) : listing.isDonation ? (
-                  <>
-                    <FiGift className="mr-3" size={20} /> Contact Donor
-                  </>
-                ) : (
-                  <>
-                    <FiDollarSign className="mr-3" size={20} /> 
-                    {listing.price ? `Contact Seller` : 'Contact Provider'}
-                  </>
-                )}
-              </motion.button>
+              <div className="flex flex-col sm:flex-row w-full space-y-3 sm:space-y-0 sm:space-x-3">
+                <motion.button
+                  onClick={buyItem}
+                  disabled={buying}
+                  whileHover={buying ? {} : { y: -3 }}
+                  whileTap={buying ? {} : { scale: 0.98 }}
+                  className={`sm:w-1/2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white py-4 px-4 rounded-xl font-medium transition-all flex items-center justify-center shadow-lg hover:shadow-xl ${buying ? 'opacity-70 cursor-not-allowed' : ''}`}
+                >
+                  {buying ? (
+                    <>
+                      <div className="mr-3 h-5 w-5 rounded-full border-2 border-t-transparent border-white animate-spin"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <FiShoppingCart className="mr-3" size={20} /> 
+                      {listing.isDonation ? 'Claim Item' : `Buy Now - ${listing.price ? `₹${listing.price}` : 'Free'}`}
+                    </>
+                  )}
+                </motion.button>
+                
+                <motion.button
+                  onClick={contactSeller}
+                  disabled={contacting}
+                  whileHover={contacting ? {} : { y: -3 }}
+                  whileTap={contacting ? {} : { scale: 0.98 }}
+                  className={`sm:w-1/2 ${listing.isDonation ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700' : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'} text-white py-4 px-4 rounded-xl font-medium transition-all flex items-center justify-center shadow-lg hover:shadow-xl ${contacting ? 'opacity-70 cursor-not-allowed' : ''}`}
+                >
+                  {contacting ? (
+                    <>
+                      <div className="mr-3 h-5 w-5 rounded-full border-2 border-t-transparent border-white animate-spin"></div>
+                      Connecting...
+                    </>
+                  ) : listing.isDonation ? (
+                    <>
+                      <FiGift className="mr-3" size={20} /> Contact Donor
+                    </>
+                  ) : (
+                    <>
+                      <FiDollarSign className="mr-3" size={20} /> 
+                      {listing.price ? `Contact Seller` : 'Contact Provider'}
+                    </>
+                  )}
+                </motion.button>
+              </div>
             )}
           </div>
         </motion.div>

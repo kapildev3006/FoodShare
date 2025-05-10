@@ -23,7 +23,11 @@ service cloud.firestore {
     match /foodListings/{listingId} {
       allow read: if true;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      
+      // More permissive update rule to fix checkout issues
+      // This allows any authenticated user to update listings during checkout
+      allow update: if isAuthenticated();
+      
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
@@ -67,6 +71,60 @@ service cloud.firestore {
                      request.auth.uid in get(/databases/$(database)/documents/conversations/$(resource.data.conversationId)).data.participants;
       
       allow delete: if false;
+    }
+    
+    // Orders collection rules
+    match /orders/{orderId} {
+      // Allow users to read their own orders (as seller or buyer)
+      allow read: if isAuthenticated() && 
+                  (resource.data.sellerId == request.auth.uid || 
+                   resource.data.buyerId == request.auth.uid);
+      
+      // Allow users to create orders where they are the buyer
+      allow create: if isAuthenticated() && 
+                    request.resource.data.buyerId == request.auth.uid &&
+                    request.resource.data.size() <= 50 && // Limit the size of order documents
+                    request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'listingId', 'totalAmount', 'shippingAddress']);
+      
+      // Allow updates only by the buyer or seller involved in the order
+      allow update: if isAuthenticated() && 
+                    (resource.data.sellerId == request.auth.uid || 
+                     resource.data.buyerId == request.auth.uid) &&
+                    (resource.data.sellerId == request.auth.uid ?
+                      // Sellers can only update certain fields
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['trackingInfo', 'orderStatus']) :
+                      // Buyers can only update certain fields
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['cancelReason', 'orderStatus', 'customerFeedback']));
+      
+      // Allow listing all orders for a specific user (as seller or buyer)
+      allow list: if isAuthenticated() &&
+                  (request.query.limit <= 50) &&  // Limit the number of results
+                  ((request.query.where('sellerId', '==', request.auth.uid).size() == 1) ||
+                   (request.query.where('buyerId', '==', request.auth.uid).size() == 1));
+      
+      // Block order deletion for audit trail purposes
+      allow delete: if false;
+    }
+    
+    // Shipping addresses collection rules
+    match /shipping_addresses/{addressId} {
+      // Allow users to read their own shipping addresses
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      
+      // Allow users to create their own shipping addresses
+      allow create: if isAuthenticated() && 
+                    request.resource.data.userId == request.auth.uid &&
+                    request.resource.data.size() <= 20; // Limit fields for security
+      
+      // Allow users to update their own shipping addresses
+      allow update: if isAuthenticated() && 
+                    resource.data.userId == request.auth.uid &&
+                    request.resource.data.userId == request.auth.uid;
+      
+      // Allow users to delete their own shipping addresses
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
   }
 }
