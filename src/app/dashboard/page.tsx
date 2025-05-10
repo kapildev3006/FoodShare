@@ -29,13 +29,30 @@ interface Listing {
 interface Order {
   id: string;
   sellerId: string;
-  productId: string;
-  productTitle: string;
-  amount: number;
+  sellerName: string;
+  buyerId: string;
   buyerName: string;
-  buyerPhoto?: string;
-  orderDate: { seconds: number; nanoseconds: number }; // Firestore timestamp
-  status: 'pending' | 'completed' | 'cancelled';
+  listingId: string;
+  productTitle: string;
+  productImage?: string;
+  totalAmount: number;
+  orderDate?: { seconds: number; nanoseconds: number };
+  createdAt?: { seconds: number; nanoseconds: number };
+  orderStatus: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  trackingInfo?: {
+    currentStatus: string;
+    history: any[];
+  };
+  isDonation: boolean;
+  paymentMethod: string;
+  shippingAddress: {
+    name: string;
+    phone: string;
+    address: string;
+    city: string;
+    state: string;
+    pincode: string;
+  };
 }
 
 // ImageWrapper component for proper positioning of the Next.js Image component
@@ -51,6 +68,31 @@ const ImageWrapper = ({ src, alt, className }: { src: string, alt: string, class
       />
     </div>
   );
+};
+
+// Helper functions
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(amount);
+};
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'delivered':
+    case 'completed':
+      return 'bg-green-100 text-green-800';
+    case 'processing':
+    case 'shipped':
+      return 'bg-blue-100 text-blue-800';
+    case 'cancelled':
+      return 'bg-red-100 text-red-800';
+    case 'pending':
+    default:
+      return 'bg-yellow-100 text-yellow-800';
+  }
 };
 
 const DashboardPage = () => {
@@ -144,20 +186,36 @@ const DashboardPage = () => {
       const sortedBySold = [...listingsData].sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0));
       setTopSellingProducts(sortedBySold.slice(0, 5));
       
-      // Fetch recent orders
-      const ordersQuery = query(collection(db, 'orders'), where('sellerId', '==', user.uid));
-      const ordersSnapshot = await getDocs(ordersQuery);
-      const ordersData = ordersSnapshot.docs.map(doc => ({
+      // Fetch orders as a seller
+      const sellingOrdersQuery = query(collection(db, 'orders'), where('sellerId', '==', user.uid));
+      const sellingOrdersSnapshot = await getDocs(sellingOrdersQuery);
+      const sellingOrdersData = sellingOrdersSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Order[];
       
-      // Sort by date and take the 5 most recent
-      const recentOrdersData = [...ordersData]
-        .sort((a, b) => b.orderDate.seconds - a.orderDate.seconds)
+      // Fetch orders as a buyer
+      const buyingOrdersQuery = query(collection(db, 'orders'), where('buyerId', '==', user.uid));
+      const buyingOrdersSnapshot = await getDocs(buyingOrdersQuery);
+      const buyingOrdersData = buyingOrdersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Order[];
+      
+      // Combine and sort all orders
+      const allOrdersData = [...sellingOrdersData, ...buyingOrdersData];
+      
+      // Sort by date (use createdAt or orderDate) and take the 5 most recent
+      const recentOrdersData = [...allOrdersData]
+        .sort((a, b) => {
+          const aTimestamp = a.createdAt?.seconds || a.orderDate?.seconds || 0;
+          const bTimestamp = b.createdAt?.seconds || b.orderDate?.seconds || 0;
+          return bTimestamp - aTimestamp;
+        })
         .slice(0, 5);
       
       setRecentOrders(recentOrdersData);
+      setStats(prev => ({ ...prev, totalOrders: allOrdersData.length }));
       
     } catch (err) {
       handleError(err);
@@ -167,14 +225,18 @@ const DashboardPage = () => {
   }, [user]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Only redirect if user is definitely not authenticated
+    if (isAuthenticated === false) {
       router.push('/login');
       return;
     }
     
-    if (user) {
-      fetchUserData();
+    // Wait for user data before fetching dashboard data
+    if (!user) {
+      return;
     }
+    
+    fetchUserData();
   }, [isAuthenticated, user, router, fetchUserData]);
 
   // Business Dashboard rendering
@@ -383,21 +445,21 @@ const DashboardPage = () => {
               {recentOrders.length > 0 ? (
                 recentOrders.map((order) => (
                   <div key={order.id} className="flex items-center p-3 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
-                    <div className="w-12 h-12 bg-gray-100 rounded-full overflow-hidden mr-4 flex-shrink-0 flex items-center justify-center">
-                      {order.buyerPhoto ? (
-                        <Image src={order.buyerPhoto} alt={order.buyerName} className="object-cover" fill sizes="(max-width: 768px) 100vw, 100px" />
+                    <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden mr-4 flex-shrink-0 flex items-center justify-center">
+                      {order.productImage ? (
+                        <ImageWrapper src={order.productImage} alt={order.productTitle} className="object-cover" />
                       ) : (
-                        <FiUser className="text-gray-400 text-xl" />
+                        <FiPackage className="text-gray-400 text-xl" />
                       )}
                     </div>
                     <div className="flex-1">
                       <h4 className="font-medium text-gray-900">{order.productTitle}</h4>
-                      <p className="text-sm text-gray-500">Ordered by {order.buyerName} · {new Date(order.orderDate.seconds * 1000).toLocaleDateString()}</p>
+                      <p className="text-sm text-gray-500">Ordered by {order.buyerName} · {new Date((order.createdAt?.seconds || order.orderDate?.seconds || 0) * 1000).toLocaleDateString()}</p>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold text-gray-900">{formatCurrency(order.amount)}</div>
-                      <div className={`text-xs px-2 py-1 rounded-full ${order.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {order.status === 'completed' ? 'Completed' : 'Pending'}
+                      <div className="font-bold text-gray-900">{formatCurrency(order.totalAmount)}</div>
+                      <div className={`text-xs px-2 py-1 rounded-full ${getStatusColor(order.orderStatus)}`}>
+                        {order.orderStatus.charAt(0).toUpperCase() + order.orderStatus.slice(1)}
                       </div>
                     </div>
                   </div>
@@ -615,24 +677,32 @@ const DashboardPage = () => {
             <div className="space-y-4">
               {recentOrders.length > 0 ? (
                 recentOrders.map((order) => (
-                  <div key={order.id} className="flex items-center p-3 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
-                    <div className="w-12 h-12 bg-gray-100 rounded-full overflow-hidden mr-4 flex-shrink-0 flex items-center justify-center">
-                      {order.buyerPhoto ? (
-                        <Image src={order.buyerPhoto} alt={order.buyerName} className="object-cover" fill sizes="(max-width: 768px) 100vw, 100px" />
-                      ) : (
-                        <FiUser className="text-gray-400 text-xl" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-gray-900">{order.productTitle}</h4>
-                      <p className="text-sm text-gray-500">From {order.buyerName} · {new Date(order.orderDate.seconds * 1000).toLocaleDateString()}</p>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-xs px-2 py-1 rounded-full ${order.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {order.status === 'completed' ? 'Completed' : 'Pending'}
+                  <Link key={order.id} href={`/orders/${order.id}`}>
+                    <div className="flex items-center p-3 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
+                      <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden mr-4 flex-shrink-0 flex items-center justify-center">
+                        {order.productImage ? (
+                          <ImageWrapper src={order.productImage} alt={order.productTitle} className="object-cover" />
+                        ) : (
+                          <FiPackage className="text-gray-400 text-xl" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-900">{order.productTitle}</h4>
+                        <p className="text-sm text-gray-500">
+                          {user?.uid === order.sellerId ? `From ${order.buyerName}` : `To ${order.sellerName}`} · 
+                          {new Date((order.createdAt?.seconds || order.orderDate?.seconds || 0) * 1000).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-xs px-2 py-1 rounded-full ${getStatusColor(order.orderStatus)}`}>
+                          {order.orderStatus.charAt(0).toUpperCase() + order.orderStatus.slice(1)}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {order.isDonation ? 'Donation' : `${formatCurrency(order.totalAmount)}`}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 ))
               ) : (
                 <div className="text-center py-8">
