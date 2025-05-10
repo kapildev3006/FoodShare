@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { FiShoppingBag, FiDollarSign, FiUsers, FiTrendingUp, FiArrowLeft, FiPackage, FiClock, FiHeart, FiAlertTriangle, FiUser, FiCheck } from 'react-icons/fi';
+import { FiShoppingBag, FiDollarSign, FiUsers, FiTrendingUp, FiArrowLeft, FiPackage, FiClock, FiHeart, FiAlertTriangle, FiCheck } from 'react-icons/fi';
 import Image from 'next/image';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
@@ -41,7 +41,11 @@ interface Order {
   orderStatus: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   trackingInfo?: {
     currentStatus: string;
-    history: any[];
+    history: Array<{
+      status: string;
+      timestamp: { seconds: number; nanoseconds: number };
+      message: string;
+    }>;
   };
   isDonation: boolean;
   paymentMethod: string;
@@ -71,13 +75,7 @@ const ImageWrapper = ({ src, alt, className }: { src: string, alt: string, class
 };
 
 // Helper functions
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0
-  }).format(amount);
-};
+
 
 const getStatusColor = (status: string) => {
   switch (status) {
